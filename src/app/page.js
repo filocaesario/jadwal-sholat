@@ -1,24 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Coordinates, CalculationMethod, PrayerTimes } from 'adhan';
+import { Coordinates, CalculationMethod, CalculationParameters, PrayerTimes, Madhab } from 'adhan';
 import { format, isAfter } from 'date-fns';
 import gsap from 'gsap';
-// Import ikon dari Lucide React
-import { MoonStar, Sunrise, Sun, SunDim, Sunset, Moon } from 'lucide-react';
+import { MoonStar, Sunrise, Sun, SunDim, Sunset, Moon, Timer, Bell, BellOff, BookOpen, X, MapPin } from 'lucide-react';
 
+// Daftar kota dengan tambahan daerah lokal
 const daftarKota = [
-  { nama: 'Bogor, Indonesia', lat: -6.5971, lng: 106.7995 },
-  { nama: 'Sukabumi, Indonesia', lat: -6.9228, lng: 106.9222 },
+  { nama: 'Cigombong, Bogor', lat: -6.7645, lng: 106.8163 },
   { nama: 'Jakarta, Indonesia', lat: -6.2088, lng: 106.8456 },
-  { nama: 'Jayapura, Indonesia', lat: -2.5337, lng: 140.7181 },
+  { nama: 'Bandung, Indonesia', lat: -6.9175, lng: 107.6191 },
+  { nama: 'Sukabumi, Indonesia', lat: -6.9228, lng: 106.9222 },
   { nama: 'Tokyo, Jepang', lat: 35.6762, lng: 139.6503 },
   { nama: 'London, Inggris', lat: 51.5074, lng: -0.1278 },
 ];
 
-// Fungsi untuk memilih ikon berdasarkan nama waktu sholat
 const getIkonSholat = (nama, isNext) => {
-  const className = `w-7 h-7 transition-colors duration-500 ${isNext ? 'text-emerald-400' : 'text-slate-400'}`;
+  const className = `w-6 h-6 md:w-7 md:h-7 transition-colors duration-500 ${isNext ? 'text-emerald-300' : 'text-slate-400'}`;
   switch (nama) {
     case 'Imsak': return <MoonStar className={className} />;
     case 'Subuh': return <Sunrise className={className} />;
@@ -33,64 +32,125 @@ const getIkonSholat = (nama, isNext) => {
 export default function Home() {
   const [lokasi, setLokasi] = useState(daftarKota[0]);
   const [jadwal, setJadwal] = useState([]);
+  const [imsakBesok, setImsakBesok] = useState(null);
   const [waktuSekarang, setWaktuSekarang] = useState(new Date());
   const [loading, setLoading] = useState(false);
+  
+  const [suaraAktif, setSuaraAktif] = useState(false);
+  const [showDoa, setShowDoa] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const audioRef = useRef(null);
   
   const listRef = useRef(null);
   const headerRef = useRef(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setWaktuSekarang(new Date()), 1000);
-    return () => clearInterval(timer);
+    setIsMounted(true);
+    const savedLokasi = localStorage.getItem('lokasiSholatTerakhir');
+    if (savedLokasi) {
+      setLokasi(JSON.parse(savedLokasi));
+    }
   }, []);
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      setWaktuSekarang(now);
+      
+      if (sholatBerikutnya && suaraAktif && audioRef.current) {
+        const diffMs = sholatBerikutnya.waktu.getTime() - now.getTime();
+        if (diffMs <= 0 && diffMs > -1000 && sholatBerikutnya.nama !== 'Imsak') {
+          audioRef.current.play().catch(e => console.log('Autoplay error', e));
+        }
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+
+  useEffect(() => {
     const coordinates = new Coordinates(lokasi.lat, lokasi.lng);
-    const date = new Date();
-    const params = CalculationMethod.Singapore(); 
-    const prayerTimes = new PrayerTimes(coordinates, date, params);
+    const dateToday = new Date();
+    const params = new CalculationParameters(20, 18);
+    params.madhab = Madhab.Shafi; 
+    params.adjustments = { fajr: 2, dhuhr: 2, asr: 2, maghrib: 2, isha: 2 }; 
     
+    const prayerTimesToday = new PrayerTimes(coordinates, dateToday, params);
+    const dateTomorrow = new Date();
+    dateTomorrow.setDate(dateTomorrow.getDate() + 1);
+    const prayerTimesTomorrow = new PrayerTimes(coordinates, dateTomorrow, params);
+
     const timesArray = [
-      { nama: 'Imsak', waktu: new Date(prayerTimes.fajr.getTime() - 10 * 60000) },
-      { nama: 'Subuh', waktu: prayerTimes.fajr },
-      { nama: 'Dzuhur', waktu: prayerTimes.dhuhr },
-      { nama: 'Ashar', waktu: prayerTimes.asr },
-      { nama: 'Maghrib', waktu: prayerTimes.maghrib },
-      { nama: 'Isya', waktu: prayerTimes.isha },
+      { nama: 'Imsak', waktu: new Date(prayerTimesToday.fajr.getTime() - 10 * 60000) },
+      { nama: 'Subuh', waktu: prayerTimesToday.fajr },
+      { nama: 'Dzuhur', waktu: prayerTimesToday.dhuhr },
+      { nama: 'Ashar', waktu: prayerTimesToday.asr },
+      { nama: 'Maghrib', waktu: prayerTimesToday.maghrib },
+      { nama: 'Isya', waktu: prayerTimesToday.isha },
     ];
 
     setJadwal(timesArray);
+    setImsakBesok({ nama: 'Imsak', waktu: new Date(prayerTimesTomorrow.fajr.getTime() - 10 * 60000) });
   }, [lokasi]);
 
   useEffect(() => {
-    gsap.fromTo(headerRef.current, 
-      { opacity: 0, y: -20 }, 
-      { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' }
-    );
+    gsap.fromTo(headerRef.current, { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' });
   }, []);
 
   useEffect(() => {
     if (jadwal.length > 0 && listRef.current) {
       gsap.fromTo(
         listRef.current.children,
-        { opacity: 0, x: -20, scale: 0.95 },
-        { opacity: 1, x: 0, scale: 1, stagger: 0.1, duration: 0.6, ease: 'back.out(1.5)' }
+        { opacity: 0, y: 15 },
+        { opacity: 1, y: 0, stagger: 0.08, duration: 0.5, ease: 'power2.out' }
       );
     }
   }, [jadwal]);
 
-  const sholatBerikutnya = jadwal.find(j => isAfter(j.waktu, waktuSekarang)) || null;
+  let sholatBerikutnya = jadwal.find(j => isAfter(j.waktu, waktuSekarang));
+  if (!sholatBerikutnya && imsakBesok) sholatBerikutnya = imsakBesok;
+
+  const getCountdown = () => {
+    if (!sholatBerikutnya) return "Menghitung...";
+    const diffMs = sholatBerikutnya.waktu.getTime() - waktuSekarang.getTime();
+    if (diffMs <= 0) return "00:00:00";
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    return `-${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const getTanggalHijriyah = () => {
+    try {
+      return new Intl.DateTimeFormat('id-ID-u-ca-islamic', { day: 'numeric', month: 'long', year: 'numeric' }).format(waktuSekarang) + ' ';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const getSapaan = () => {
+    const jam = waktuSekarang.getHours();
+    if (jam >= 3 && jam < 11) return 'Selamat Pagi';
+    if (jam >= 11 && jam < 15) return 'Selamat Siang';
+    if (jam >= 15 && jam < 18) return 'Selamat Sore';
+    return 'Selamat Malam';
+  };
+
+  const handlePilihLokasi = (kotaTerpilih) => {
+    setLokasi(kotaTerpilih);
+    localStorage.setItem('lokasiSholatTerakhir', JSON.stringify(kotaTerpilih));
+  };
 
   const deteksiLokasi = () => {
     setLoading(true);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setLokasi({
-            nama: '📍 Lokasi Anda Saat Ini',
+          const lokasiBaru = {
+            nama: '📍 Lokasi GPS Anda',
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          });
+          };
+          handlePilihLokasi(lokasiBaru);
           setLoading(false);
         },
         () => {
@@ -102,38 +162,84 @@ export default function Home() {
   };
 
   return (
-    // Latar belakang gradasi elegan
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-200 p-4 md:p-8 flex justify-center font-sans overflow-hidden relative">
+    <div className="min-h-screen bg-[#0b1120] text-slate-200 p-4 md:p-8 flex justify-center font-sans">
+      <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
       
-      {/* Efek Cahaya Latar (Glow Background) */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-64 bg-emerald-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+      {/* Background Glow */}
+      <div className="fixed top-[-10%] left-1/2 -translate-x-1/2 w-[80%] h-[400px] bg-emerald-600/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
 
-      <div className="max-w-md w-full mt-4 md:mt-8 relative z-10">
+      <div className="max-w-md w-full relative z-10">
         
-        <header ref={headerRef} className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 tracking-tight mb-4 drop-shadow-sm">
-            Waktu Sholat
-          </h1>
-          <div className="inline-flex items-center gap-3 bg-slate-800/60 backdrop-blur-md px-5 py-2 rounded-2xl border border-slate-700/50 shadow-inner">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <p className="text-emerald-300 font-mono text-xl tracking-widest font-semibold">
-              {format(waktuSekarang, 'HH:mm:ss')}
-            </p>
+        {/* Top Navigation Bar */}
+        <div className="flex justify-between items-center mb-8 mt-2">
+          <button 
+            onClick={() => setShowDoa(true)}
+            className="flex items-center gap-2 text-xs font-medium bg-[#1e293b]/80 hover:bg-[#334155] text-emerald-300 px-4 py-2.5 rounded-full transition-all border border-slate-700/60 shadow-sm"
+          >
+            <BookOpen className="w-3.5 h-3.5" /> Doa Adzan
+          </button>
+          
+          <button 
+            onClick={() => setSuaraAktif(!suaraAktif)}
+            className={`flex items-center gap-2 text-xs font-medium px-4 py-2.5 rounded-full transition-all border shadow-sm ${
+              suaraAktif 
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/40' 
+              : 'bg-[#1e293b]/80 text-slate-400 border-slate-700/60 hover:bg-[#334155]'
+            }`}
+          >
+            {suaraAktif ? <Bell className="w-3.5 h-3.5 animate-pulse" /> : <BellOff className="w-3.5 h-3.5" />}
+            {suaraAktif ? 'Alarm Aktif' : 'Alarm Mati'}
+          </button>
+        </div>
+
+        {/* Header Section */}
+        <header ref={headerRef} className="mb-10">
+          <div className="text-center mb-6">
+            <h2 suppressHydrationWarning className="text-slate-400 text-sm font-medium tracking-wider uppercase mb-1">
+              {isMounted ? getSapaan() : 'Memuat...'}
+            </h2>
+            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
+              Waktu <span className="text-emerald-400">Sholat</span>
+            </h1>
+          </div>
+          
+          {/* Main Time Card */}
+          <div className="bg-[#1e293b]/60 backdrop-blur-md rounded-3xl p-6 border border-slate-700/50 shadow-xl flex flex-col items-center">
+             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/50 border border-slate-700 mb-4">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <p suppressHydrationWarning className="text-emerald-300 font-mono text-lg tracking-widest font-semibold">
+                  {isMounted ? format(waktuSekarang, 'HH:mm:ss') : '--:--:--'}
+                </p>
+             </div>
+
+             {sholatBerikutnya && (
+               <div className="w-full flex flex-col items-center">
+                 <p className="text-slate-400 text-sm mb-1">Menuju <span className="text-emerald-400 font-semibold">{sholatBerikutnya.nama}</span></p>
+                 <span suppressHydrationWarning className="font-mono font-bold text-3xl md:text-4xl text-white tracking-tight drop-shadow-md">
+                   {isMounted ? getCountdown() : '--:--:--'}
+                 </span>
+                 {/* Progress Bar Visual Line */}
+                 <div className="w-full h-1 bg-slate-800 rounded-full mt-5 overflow-hidden">
+                    <div className="h-full bg-emerald-500 w-1/2 animate-[pulse_3s_ease-in-out_infinite] rounded-full opacity-70"></div>
+                 </div>
+               </div>
+             )}
           </div>
         </header>
         
-        <div className="space-y-4 mb-10">
+        {/* Location Selector */}
+        <div className="space-y-3 mb-8">
           <div className="relative group">
             <select 
-              className="w-full bg-slate-800/80 backdrop-blur-sm border border-slate-700 text-white text-base rounded-2xl p-4 pl-5 outline-none focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/10 appearance-none shadow-lg cursor-pointer transition-all duration-300 group-hover:border-slate-600"
+              className="w-full bg-[#1e293b]/90 border border-slate-700 text-white text-sm md:text-base rounded-2xl p-4 pl-12 outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 appearance-none cursor-pointer transition-all duration-300"
               value={lokasi.nama}
               onChange={(e) => {
                 const kotaTerpilih = daftarKota.find(k => k.nama === e.target.value);
-                if (kotaTerpilih) setLokasi(kotaTerpilih);
+                if (kotaTerpilih) handlePilihLokasi(kotaTerpilih);
               }}
             >
-              <option disabled value="📍 Lokasi Anda Saat Ini" className="bg-slate-900 text-white">
-                📍 Lokasi Anda Saat Ini
+              <option disabled value="📍 Lokasi GPS Anda" className="bg-slate-900 text-slate-300">
+                Lokasi GPS Anda
               </option>
               {daftarKota.map((kota) => (
                 <option key={kota.nama} value={kota.nama} className="bg-slate-900 text-white py-2">
@@ -141,94 +247,83 @@ export default function Home() {
                 </option>
               ))}
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-5 text-slate-400 group-hover:text-emerald-400 transition-colors">
-              <svg className="fill-current h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-              </svg>
+            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
+              <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
             </div>
           </div>
 
           <button 
             onClick={deteksiLokasi}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-white font-bold py-4 px-6 rounded-2xl transition-all duration-300 flex justify-center items-center gap-3 shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-[0.98]"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold py-3.5 px-6 rounded-2xl transition-all duration-300 flex justify-center items-center gap-2 shadow-[0_4px_20px_rgba(16,185,129,0.25)] active:scale-[0.98] text-sm md:text-base"
           >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-5 w-5 text-emerald-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <span>Mencari Sinyal GPS...</span>
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>Gunakan Lokasi Saat Ini</span>
-              </>
-            )}
+            {loading ? 'Mencari Sinyal GPS...' : 'Gunakan GPS Saat Ini'}
           </button>
         </div>
 
-        <div className="flex flex-col items-center mb-6 bg-slate-800/40 backdrop-blur-sm py-3 px-6 rounded-2xl border border-slate-700/50">
-           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-             {lokasi.nama}
-           </h2>
-           <p className="text-emerald-400/80 text-sm mt-1 font-medium">{format(new Date(), 'EEEE, dd MMMM yyyy')}</p>
+        {/* Date Section */}
+        <div className="flex flex-col items-center mb-6 py-2">
+           <p suppressHydrationWarning className="text-white text-base font-medium">
+             {isMounted ? format(waktuSekarang, 'EEEE, dd MMMM yyyy') : 'Memuat tanggal...'}
+           </p>
+           <p suppressHydrationWarning className="text-emerald-400 text-sm font-medium mt-1">
+             {isMounted ? getTanggalHijriyah() : ''}
+           </p>
         </div>
 
-        {jadwal.length > 0 ? (
-          <div className="bg-slate-900/60 backdrop-blur-xl rounded-[2rem] p-4 shadow-2xl border border-slate-700/50 relative overflow-hidden">
-            {/* Dekorasi kilauan halus di sudut kartu */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl"></div>
-
-            <ul ref={listRef} className="space-y-3 relative z-10">
+        {/* Schedule List */}
+        {jadwal.length > 0 && (
+          <div className="bg-[#1e293b]/40 rounded-[2rem] p-3 md:p-4 border border-slate-800/60 shadow-lg">
+            <ul ref={listRef} className="space-y-2 relative z-10">
               {jadwal.map((item) => {
                 const isNext = sholatBerikutnya?.nama === item.nama;
                 return (
-                  <li 
-                    key={item.nama} 
-                    className={`flex justify-between items-center p-4 md:p-5 rounded-2xl transition-all duration-500 ${
-                      isNext 
-                        ? 'bg-gradient-to-r from-emerald-900/40 to-emerald-800/20 border border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)] transform scale-[1.02]' 
-                        : 'bg-slate-800/40 border border-slate-700/30 hover:bg-slate-700/40'
-                    }`}
-                  >
-                    <div className="flex items-center gap-4 md:gap-5">
-                      {/* Kontainer Ikon */}
-                      <div className={`p-3 rounded-xl transition-colors duration-500 ${isNext ? 'bg-emerald-500/20 shadow-inner' : 'bg-slate-700/30'}`}>
+                  <li key={item.nama} className={`flex justify-between items-center p-4 rounded-2xl transition-all duration-300 ${isNext ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-transparent border border-transparent hover:bg-slate-800/50'}`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2.5 md:p-3 rounded-xl transition-colors ${isNext ? 'bg-emerald-500/20' : 'bg-slate-800'}`}>
                         {getIkonSholat(item.nama, isNext)}
                       </div>
-                      
                       <div className="flex flex-col">
-                        <span className={`text-xl font-bold tracking-wide ${isNext ? 'text-emerald-300' : 'text-slate-200'}`}>
-                          {item.nama}
-                        </span>
-                        {isNext ? (
-                          <span className="text-xs text-emerald-400 font-semibold mt-0.5 uppercase tracking-wider flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            Waktu Selanjutnya
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-500 mt-0.5 tracking-wide">Terjadwal</span>
-                        )}
+                        <span className={`text-lg md:text-xl font-bold tracking-wide ${isNext ? 'text-emerald-400' : 'text-slate-200'}`}>{item.nama}</span>
+                        {isNext && <span className="text-[10px] md:text-xs text-emerald-400 font-semibold mt-0.5 uppercase tracking-wider">Selanjutnya</span>}
                       </div>
                     </div>
-                    
-                    <span className={`text-3xl font-extrabold font-mono ${isNext ? 'text-white drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'text-slate-400'}`}>
-                      {format(item.waktu, 'HH:mm')}
+                    <span suppressHydrationWarning className={`text-2xl md:text-3xl font-extrabold font-mono ${isNext ? 'text-white' : 'text-slate-400'}`}>
+                      {isMounted ? format(item.waktu, 'HH:mm') : '--:--'}
                     </span>
                   </li>
                 );
               })}
             </ul>
           </div>
-        ) : (
-          <div className="flex justify-center p-12">
-            <div className="relative w-12 h-12">
-              <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          </div>
         )}
       </div>
+
+      {/* Doa Modal */}
+      {showDoa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/80 backdrop-blur-sm transition-opacity">
+          <div className="bg-[#0f172a] border border-emerald-500/30 rounded-3xl max-w-md w-full p-6 md:p-8 shadow-2xl relative">
+            <button onClick={() => setShowDoa(false)} className="absolute top-5 right-5 text-slate-400 hover:text-white bg-slate-800 p-2 rounded-full transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-xl md:text-2xl font-bold text-emerald-400 mb-6 text-center">Doa Setelah Adzan</h3>
+            
+            <div className="text-center space-y-6">
+              <p className="text-2xl md:text-3xl font-bold text-white leading-loose font-serif" dir="rtl">
+                اللّٰهُمَّ رَبَّ هٰذِهِ الدَّعْوَةِ التَّامَّةِ، وَالصَّلَاةِ الْقَائِمَةِ، آتِ مُحَمَّدَانِ الْوَسِيلَةَ وَالْفَضِيلَةَ، وَابْعَثْهُ مَقَامًا مَحْمُودَانِ الَّذِي وَعَدْتَهُ
+              </p>
+              <p className="text-emerald-100/70 text-sm italic leading-relaxed">
+                "Allaahumma robba haadzihid da'watit taammah, washsholaatil qoo-imah, aati muhammadanil wasiilata wal fadhilah, wab'atshu maqoomam mahmuudanil ladzii wa'adtah."
+              </p>
+              <div className="w-full h-px bg-slate-800 my-4"></div>
+              <p className="text-slate-300 text-sm text-left leading-relaxed">
+                <span className="font-bold text-emerald-500">Artinya:</span> "Ya Allah, Tuhan yang memiliki seruan yang sempurna dan shalat yang tetap didirikan, karuniailah Nabi Muhammad wasilah dan keutamaan, dan bangkitkanlah beliau pada kedudukan yang terpuji yang telah Engkau janjikan."
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
