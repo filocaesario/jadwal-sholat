@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Coordinates, CalculationMethod, PrayerTimes, Madhab, Qibla } from 'adhan';
 import { format } from 'date-fns';
 import gsap from 'gsap';
-import { MoonStar, Sunrise, Sun, SunDim, Sunset, Moon, Volume2, VolumeX, BookOpen, X, MapPin, AlertCircle, Clock, ChevronRight, CalendarDays, Compass, Navigation } from 'lucide-react';
+import { MoonStar, Sunrise, Sun, SunDim, Sunset, Moon, Volume2, VolumeX, BookOpen, X, MapPin, AlertCircle, Clock, ChevronRight, CalendarDays, Compass } from 'lucide-react';
 
 const daftarKota = [
   { nama: 'Cigombong, Bogor', lat: -6.7645, lng: 106.8163 },
@@ -46,14 +46,14 @@ export default function Home() {
   const [arahKiblat, setArahKiblat] = useState(0);
   const [loading, setLoading] = useState(false);
   
-  // State untuk Modal & Interaksi
+  // State Modal & Interaksi
   const [suaraAktif, setSuaraAktif] = useState(false);
   const [showDoa, setShowDoa] = useState(false);
   const [showKalender, setShowKalender] = useState(false);
   const [showKompas, setShowKompas] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   
-  // State untuk Sensor Kompas
+  // State Kompas
   const [heading, setHeading] = useState(null);
   
   const audioRef = useRef(null);
@@ -91,7 +91,7 @@ export default function Home() {
     params.madhab = Madhab.Shafi; 
     params.adjustments = { fajr: 2, dhuhr: 2, asr: 2, maghrib: 2, isha: 2 }; 
     
-    // Perbaikan Kalkulasi Arah Kiblat (Tanpa 'new')
+    // Set Arah Kiblat
     const qiblaCalc = Qibla(coordinates);
     setArahKiblat(qiblaCalc);
     
@@ -133,7 +133,7 @@ export default function Home() {
     }
   }, [jadwalHarian]);
 
-  // LOGIKA STATUS WAKTU SHOLAT
+  // STATUS WAKTU SHOLAT
   let modeIqomah = false;
   let sholatBerikutnya = semuaJadwal.find(j => j.waktu.getTime() > waktuSekarang.getTime());
   let currentIndex = semuaJadwal.findIndex(j => j.waktu.getTime() > waktuSekarang.getTime()) - 1;
@@ -151,7 +151,6 @@ export default function Home() {
     }
   }
 
-  // KALKULASI PROGRESS (TANPA ANGKA DESIMAL DI UI)
   let progressPersen = 0;
   if (waktuTarget) {
     let waktuMulai = new Date();
@@ -176,14 +175,33 @@ export default function Home() {
     return `-${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  // FORMAT TANGGAL MASEHI INDONESIA
+  const getTanggalMasehi = () => {
+    try {
+      return new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(waktuSekarang);
+    } catch (e) {
+      return format(waktuSekarang, 'dd MMMM yyyy'); // Fallback
+    }
+  };
+
+  // FORMAT TANGGAL HIJRIYAH AKURAT (UMM AL-QURA)
   const getTanggalHijriyah = () => {
     try {
-      return new Intl.DateTimeFormat('id-ID-u-ca-islamic', { day: 'numeric', month: 'long', year: 'numeric' }).format(waktuSekarang) + ' H';
+      // Ambil format kalender bawaan browser
+      const formatHijriah = new Intl.DateTimeFormat('id-ID-u-ca-islamic-umalqura', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      }).format(waktuSekarang);
+      
+      // Hapus 'H' atau 'AH' bawaan browser jika ada, lalu tambahkan 'H' dengan rapi
+      return formatHijriah.replace(/ AH| H/gi, '') + ' H';
     } catch (e) {
       return '';
     }
   };
 
+  // DETEKSI LOKASI
   const deteksiLokasi = () => {
     setLoading(true);
     if (navigator.geolocation) {
@@ -204,16 +222,29 @@ export default function Home() {
     }
   };
 
-  // FUNGSI KOMPAS (SENSOR HP)
+  // LOGIKA KOMPAS LEBIH AKURAT
   const handleOrientation = (event) => {
     let compassHeading = null;
     if (event.webkitCompassHeading !== undefined) {
       compassHeading = event.webkitCompassHeading; // iOS
+    } else if (event.absolute === true && event.alpha !== null) {
+      compassHeading = 360 - event.alpha; // Android Chrome (Absolute)
     } else if (event.alpha !== null) {
-      compassHeading = 360 - event.alpha; // Android approximation
+      compassHeading = 360 - event.alpha; // Fallback Android
     }
+
     if (compassHeading !== null) {
-      setHeading(compassHeading);
+      // Penyesuaian rotasi layar HP (Landscape/Portrait)
+      let screenOrientation = 0;
+      if (window.screen && window.screen.orientation && window.screen.orientation.angle) {
+        screenOrientation = window.screen.orientation.angle;
+      } else if (window.orientation !== undefined) {
+        screenOrientation = window.orientation;
+      }
+      
+      let finalHeading = (compassHeading + screenOrientation) % 360;
+      if (finalHeading < 0) finalHeading += 360;
+      setHeading(finalHeading);
     }
   };
 
@@ -228,10 +259,10 @@ export default function Home() {
           alert('Izin sensor kompas ditolak.');
         }
       } catch (error) {
-        console.error('Error meminta izin kompas:', error);
+        console.error('Error izin kompas:', error);
       }
     } else if ('ondeviceorientationabsolute' in window) {
-      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true); // Khusus Android agar akurat
     } else {
       window.addEventListener('deviceorientation', handleOrientation, true);
     }
@@ -244,14 +275,16 @@ export default function Home() {
     setHeading(null);
   };
 
-  // Cek apakah HP menghadap kiblat (Toleransi kemiringan 4 derajat)
-  const isMenghadapKiblat = heading !== null && 
-    (Math.abs((heading - arahKiblat) % 360) <= 4 || Math.abs((heading - arahKiblat) % 360) >= 356);
+  // Kalkulasi selisih derajat
+  let diffKiblat = heading !== null ? Math.abs(heading - arahKiblat) : null;
+  if (diffKiblat > 180) diffKiblat = 360 - diffKiblat;
+  
+  // Menghadap kiblat jika selisih derajat <= 3 (Toleransi 3 Derajat)
+  const isMenghadapKiblat = heading !== null && diffKiblat <= 3;
 
-  // Vibrate saat menghadap kiblat
   useEffect(() => {
     if (isMenghadapKiblat && navigator.vibrate) {
-      navigator.vibrate(50);
+      navigator.vibrate([50, 50, 50]); // Getar 3x cepat
     }
   }, [isMenghadapKiblat]);
 
@@ -259,9 +292,9 @@ export default function Home() {
     <div className="min-h-screen bg-[#060b13] text-slate-200 p-4 md:p-8 flex justify-center font-sans relative overflow-hidden">
       <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
       
-      {/* AMBIENT BACKGROUND GLOW */}
-      <div className={`absolute top-0 left-1/4 w-[50vw] h-[40vh] blur-[140px] rounded-full pointer-events-none transition-colors duration-[2000ms] ease-in-out opacity-40 ${modeIqomah ? 'bg-amber-900/40' : 'bg-emerald-900/30'}`}></div>
-      <div className={`absolute bottom-0 right-1/4 w-[40vw] h-[30vh] blur-[120px] rounded-full pointer-events-none transition-colors duration-[2000ms] ease-in-out opacity-30 ${modeIqomah ? 'bg-orange-800/20' : 'bg-teal-900/20'}`}></div>
+      {/* AMBIENT BACKGROUND */}
+      <div className={`absolute top-0 left-1/4 w-[50vw] h-[40vh] blur-[140px] rounded-full pointer-events-none transition-colors duration-[2000ms] opacity-40 ${modeIqomah ? 'bg-amber-900/40' : 'bg-emerald-900/30'}`}></div>
+      <div className={`absolute bottom-0 right-1/4 w-[40vw] h-[30vh] blur-[120px] rounded-full pointer-events-none transition-colors duration-[2000ms] opacity-30 ${modeIqomah ? 'bg-orange-800/20' : 'bg-teal-900/20'}`}></div>
 
       <div className="max-w-md w-full relative z-10 flex flex-col pt-2 pb-10">
         
@@ -281,7 +314,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* HEADER & MAIN WAKTU CARD */}
+        {/* HEADER & KARTU UTAMA */}
         <header ref={headerRef} className="mb-8">
           <div className="text-center mb-6">
             <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 tracking-tight">
@@ -313,7 +346,6 @@ export default function Home() {
                    {isMounted ? getCountdown() : '--:--:--'}
                  </span>
                  
-                 {/* PROGRESS BAR BERSIH TANPA ANGKA DESIMAL */}
                  <div className="w-full flex justify-start items-end mt-6 mb-2">
                     <span className="text-[11px] text-slate-400 font-medium tracking-wider uppercase">Progres Waktu</span>
                  </div>
@@ -330,7 +362,7 @@ export default function Home() {
           </div>
         </header>
         
-        {/* PILIH LOKASI & TOMBOL BUKA KOMPAS KIBLAT */}
+        {/* PILIH LOKASI & KOMPAS */}
         <div className="space-y-3 mb-10">
           <div className="relative group">
             <select 
@@ -362,17 +394,17 @@ export default function Home() {
           </div>
         </div>
 
-        {/* TANGGAL AREA */}
+        {/* TANGGAL AREA (MASEHI & HIJRIYAH INDONESIA) */}
         <div className="flex flex-col items-center mb-6 py-2">
            <p suppressHydrationWarning className="text-white text-base font-semibold tracking-wide drop-shadow-sm">
-             {isMounted ? format(waktuSekarang, 'EEEE, dd MMMM yyyy') : 'Memuat...'}
+             {isMounted ? getTanggalMasehi() : 'Memuat...'}
            </p>
            <p suppressHydrationWarning className="text-emerald-400 text-sm font-semibold mt-1.5 bg-emerald-500/10 px-4 py-1 rounded-full border border-emerald-500/20 shadow-sm">
              {isMounted ? getTanggalHijriyah() : ''}
            </p>
         </div>
 
-        {/* DAFTAR JADWAL SHOLAT */}
+        {/* DAFTAR JADWAL */}
         {jadwalHarian.length > 0 && (
           <div className="bg-white/[0.02] backdrop-blur-xl rounded-[2rem] p-3 md:p-4 border border-white/5 shadow-2xl">
             <ul ref={listRef} className="space-y-2">
@@ -422,67 +454,91 @@ export default function Home() {
         )}
       </div>
 
-      {/* MODAL KOMPAS KIBLAT VISUAL REAL-TIME */}
+      {/* MODAL KOMPAS VISUAL PREMIUM (Tampilan Menyerupai Aplikasi Ka'bah) */}
       {showKompas && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#02050a]/95 backdrop-blur-xl transition-opacity">
-          <div className="bg-[#0b1120] border border-white/10 rounded-3xl max-w-sm w-full shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative flex flex-col items-center p-8">
-            <button onClick={tutupKompas} className="absolute top-5 right-5 text-slate-400 hover:text-white bg-white/5 hover:bg-red-500/40 p-2 rounded-full transition-all">
+          <div className="bg-[#0b1120] border border-white/10 rounded-3xl max-w-sm w-full shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative flex flex-col items-center p-8 overflow-hidden">
+            {/* Ambient Background di dalam Modal */}
+            <div className={`absolute inset-0 opacity-20 transition-colors duration-500 ${isMenghadapKiblat ? 'bg-emerald-500' : 'bg-slate-800'}`}></div>
+
+            <button onClick={tutupKompas} className="absolute top-5 right-5 text-slate-400 hover:text-white bg-white/5 hover:bg-red-500/40 p-2 rounded-full transition-all z-20">
               <X className="w-5 h-5" />
             </button>
             
-            <h3 className="text-2xl font-bold text-white mb-2 tracking-wide">Arah Kiblat</h3>
-            <p className="text-slate-400 text-sm text-center mb-8">Posisikan HP Anda mendatar seperti melihat peta.</p>
+            <h3 className="text-2xl font-bold text-white mb-2 tracking-wide z-10">Arah Kiblat</h3>
             
-            {/* Indikator "Menghadap Kiblat" */}
-            <div className={`px-4 py-1.5 rounded-full mb-6 font-bold text-sm tracking-wider transition-colors duration-300 ${isMenghadapKiblat ? 'bg-emerald-500 text-black shadow-[0_0_20px_#10b981]' : 'bg-slate-800 text-slate-400'}`}>
-              {isMenghadapKiblat ? 'LURUS MENGHADAP KIBLAT' : 'PUTAR HP ANDA'}
-            </div>
+            {heading === null ? (
+              <p className="text-slate-400 text-sm text-center mb-8 z-10 animate-pulse">Menghubungkan ke sensor kompas...</p>
+            ) : (
+              <p className="text-slate-400 text-sm text-center mb-8 z-10">Putar HP hingga Ikon Ka'bah sejajar dengan panah Hijau.</p>
+            )}
+            
+            {/* Indikator Status & Kalibrasi */}
+            {heading !== null && (
+              <div className={`px-4 py-2 rounded-xl mb-6 font-bold text-sm tracking-widest text-center transition-all duration-300 z-10 ${isMenghadapKiblat ? 'bg-emerald-500 text-black shadow-[0_0_30px_rgba(16,185,129,0.8)] scale-110' : 'bg-slate-800/80 text-slate-400 border border-white/5'}`}>
+                {isMenghadapKiblat ? 'LURUS MENGHADAP KIBLAT' : 'PUTAR HP ANDA'}
+              </div>
+            )}
 
-            {/* Lingkaran Kompas Interaktif */}
-            <div className="relative w-64 h-64 border-[6px] border-slate-800 bg-black/50 rounded-full flex items-center justify-center shadow-inner overflow-hidden">
-               {heading === null ? (
-                 <div className="text-slate-500 text-xs text-center px-4 animate-pulse">Menunggu sensor...<br/>(Gunakan HP, bukan Laptop)</div>
-               ) : (
-                 <>
-                   {/* Piringan Kompas Berputar (Menjaga Utara selalu di tempat yang benar) */}
+            {/* KOMPAS DIGITAL */}
+            <div className="relative w-64 h-64 z-10 mb-6">
+               
+               {/* Panah Target Tetap di Atas Layar */}
+               <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-30 drop-shadow-[0_2px_5px_rgba(0,0,0,1)]">
+                 <div className={`w-0 h-0 border-l-[12px] border-r-[12px] border-t-[18px] border-l-transparent border-r-transparent transition-colors duration-300 ${isMenghadapKiblat ? 'border-t-emerald-400' : 'border-t-slate-300'}`}></div>
+               </div>
+
+               {/* Ring Kompas Utama */}
+               <div className={`w-full h-full rounded-full border-4 flex items-center justify-center bg-black/60 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] transition-colors duration-500 overflow-hidden relative ${isMenghadapKiblat ? 'border-emerald-500' : 'border-slate-700'}`}>
+                 
+                 {heading !== null && (
                    <div 
                      className="absolute inset-0 transition-transform duration-200 ease-out" 
                      style={{ transform: `rotate(${-heading}deg)` }}
                    >
-                      {/* Penanda Mata Angin */}
-                      <div className="absolute top-2 left-1/2 -translate-x-1/2 text-red-500 font-bold text-sm">U</div>
-                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-slate-500 font-bold text-sm">S</div>
-                      <div className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">B</div>
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">T</div>
-                      
-                      {/* Garis Pembantu */}
-                      <div className="absolute top-1/2 left-0 w-full h-px bg-white/10"></div>
-                      <div className="absolute top-0 left-1/2 w-px h-full bg-white/10"></div>
+                      {/* Titik-titik derajat di pinggir kompas */}
+                      {[...Array(12)].map((_, i) => (
+                        <div key={i} className="absolute inset-0" style={{ transform: `rotate(${i * 30}deg)` }}>
+                          <div className={`w-1 mx-auto mt-1 rounded-full ${i % 3 === 0 ? 'h-3 bg-slate-400' : 'h-1.5 bg-slate-600'}`}></div>
+                        </div>
+                      ))}
 
-                      {/* Jarum Penunjuk Kiblat (Rotasi statis dari Utara menuju derajat Kiblat) */}
-                      <div 
-                        className="absolute inset-0 flex items-start justify-center"
-                        style={{ transform: `rotate(${arahKiblat}deg)` }}
-                      >
-                        <div className="w-1.5 h-[50%] flex flex-col items-center justify-end origin-bottom">
-                           <div className={`w-8 h-8 rounded-full flex items-center justify-center -mt-4 transition-colors duration-300 ${isMenghadapKiblat ? 'bg-emerald-500 shadow-[0_0_20px_#10b981]' : 'bg-emerald-500/50'}`}>
-                             <Navigation className="w-5 h-5 text-white fill-white" />
-                           </div>
-                           <div className={`w-1 h-full rounded-t-full transition-colors duration-300 ${isMenghadapKiblat ? 'bg-emerald-500' : 'bg-emerald-500/50'}`}></div>
+                      {/* Huruf Mata Angin */}
+                      <div className="absolute top-5 left-1/2 -translate-x-1/2 text-red-500 font-bold text-sm">U</div>
+                      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-slate-500 font-bold text-sm">S</div>
+                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">B</div>
+                      <div className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">T</div>
+                      
+                      {/* IKON KA'BAH PADA DERAJAT KIBLAT */}
+                      <div className="absolute inset-0" style={{ transform: `rotate(${arahKiblat}deg)` }}>
+                        {/* Garis pemandu dari Ka'bah ke tengah */}
+                        <div className="w-0.5 h-[50%] bg-gradient-to-t from-transparent to-emerald-500/50 mx-auto opacity-70"></div>
+                        {/* Kotak Hitam Simbol Ka'bah */}
+                        <div className={`absolute top-2 left-1/2 -translate-x-1/2 w-8 h-8 rounded-md bg-black border-2 border-yellow-600 flex items-center justify-center shadow-lg transition-transform duration-300 ${isMenghadapKiblat ? 'scale-125 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.6)]' : ''}`}>
+                           <div className="w-full h-px bg-yellow-600 absolute top-2"></div>
                         </div>
                       </div>
                    </div>
-                   
-                   {/* Penanda "Maju/Depan" HP yang Statis */}
-                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-r-[8px] border-b-[12px] border-l-transparent border-r-transparent border-b-white z-20 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"></div>
-                   
-                   {/* Titik Tengah */}
-                   <div className="absolute w-4 h-4 bg-white rounded-full z-20 border-2 border-slate-900 shadow-md"></div>
-                 </>
-               )}
+                 )}
+                 
+                 {/* Titik Poros Tengah */}
+                 <div className="absolute w-3 h-3 bg-white rounded-full z-20 shadow-md"></div>
+               </div>
             </div>
 
-            <p className="text-slate-500 text-xs mt-8 font-mono">Derajat Kiblat: {arahKiblat.toFixed(1)}°</p>
+            <div className="w-full flex justify-between items-center bg-black/40 px-5 py-3 rounded-xl border border-white/5 z-10">
+               <div className="flex flex-col">
+                 <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Derajat Kiblat</span>
+                 <span className="font-mono text-emerald-400 font-bold">{arahKiblat.toFixed(1)}°</span>
+               </div>
+               <div className="w-px h-8 bg-white/10"></div>
+               <div className="flex flex-col items-end">
+                 <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Arah HP Anda</span>
+                 <span className="font-mono text-white font-bold">{heading !== null ? `${heading.toFixed(1)}°` : '--°'}</span>
+               </div>
+            </div>
+            
+            <p className="text-slate-500 text-[10px] text-center mt-4 z-10">*Kalibrasi kompas dengan menggerakkan HP membentuk angka 8 (∞).</p>
           </div>
         </div>
       )}
