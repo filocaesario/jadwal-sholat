@@ -25,6 +25,13 @@ const daftarHariBesar = [
   { event: "Maulid Nabi", date: "25 Agustus 2026", y: 2026, m: 7, d: 25, desc: "12 Rabiul Awal 1448 H, Kelahiran Nabi SAW" },
 ];
 
+// DAFTAR NAMA BULAN HIJRIYAH MANUAL (Agar HP tidak salah terjemah menjadi Desember)
+const BULAN_HIJRIYAH = [
+  "Muharram", "Shafar", "Rabi'ul Awal", "Rabi'ul Akhir",
+  "Jumadil Awal", "Jumadil Akhir", "Rajab", "Sya'ban",
+  "Ramadhan", "Syawal", "Dzulqa'dah", "Dzulhijjah"
+];
+
 const getIkonSholat = (nama, warnaClass) => {
   const className = `w-5 h-5 md:w-6 md:h-6 transition-colors duration-500 ${warnaClass}`;
   switch (nama) {
@@ -82,7 +89,6 @@ export default function Home() {
     const savedLokasi = localStorage.getItem('lokasiSholatTerakhir');
     if (savedLokasi) setLokasi(JSON.parse(savedLokasi));
 
-    // MUNCULKAN POP-UP OTOMATIS JIKA H-14 atau HARI H
     if (eventTerdekat && eventTerdekat.sisaHari <= 14) {
       const timerPopup = setTimeout(() => setShowPopupEvent(true), 1500);
       return () => clearTimeout(timerPopup);
@@ -190,9 +196,32 @@ export default function Home() {
     catch (e) { return format(waktuSekarang, 'dd MMMM yyyy'); }
   };
 
+  // FUNGSI HIJRIYAH YANG SUDAH DIPERBAIKI DENGAN ARRAY MANUAL
   const getTanggalHijriyah = () => {
-    try { return new Intl.DateTimeFormat('id-ID-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }).format(waktuSekarang).replace(/ AH| H/gi, '') + ' H'; } 
-    catch (e) { return ''; }
+    try {
+      // Menggunakan en-US agar HP tidak iseng menerjemahkannya menjadi Desember
+      const formatter = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', { 
+        day: 'numeric', 
+        month: 'numeric', 
+        year: 'numeric' 
+      });
+      
+      const parts = formatter.formatToParts(waktuSekarang);
+      let day, month, year;
+      
+      parts.forEach(p => {
+        if (p.type === 'day') day = p.value;
+        if (p.type === 'month') month = p.value;
+        if (p.type === 'year') year = p.value;
+      });
+
+      // Konversi angka bulan menjadi nama bulan yang sebenarnya
+      const namaBulan = BULAN_HIJRIYAH[parseInt(month) - 1] || month;
+      return `${day} ${namaBulan} ${year} H`;
+      
+    } catch (e) {
+      return '';
+    }
   };
 
   const deteksiLokasi = () => {
@@ -247,7 +276,6 @@ export default function Home() {
 
   useEffect(() => { if (isMenghadapKiblat && navigator.vibrate) navigator.vibrate([50, 50, 50]); }, [isMenghadapKiblat]);
 
-  // LOGIKA RENDER IKON BERDASARKAN NAMA ACARA
   const renderIkonEvent = () => {
     if (!eventTerdekat) return null;
     if (eventTerdekat.event.includes('Adha')) {
@@ -288,7 +316,6 @@ export default function Home() {
 
       <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
       
-      {/* BACKGROUND & BINGKAI MASJID (DISEMBUNYIKAN DEMI KETERBACAAN KODE, SAMA SEPERTI SEBELUMNYA) */}
       <svg className={`fixed inset-0 w-full h-full pointer-events-none z-0 transition-colors duration-1000 ${modeIqomah ? 'text-amber-500' : 'text-emerald-500'} opacity-[0.02]`} xmlns="http://www.w3.org/2000/svg">
         <defs><pattern id="islamic-pattern" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse"><g stroke="currentColor" strokeWidth="1.5" fill="none"><path d="M40 0L45 35L80 40L45 45L40 80L35 45L0 40L35 35Z" /><rect x="20" y="20" width="40" height="40" transform="rotate(45 40 40)" /></g></pattern></defs>
         <rect x="0" y="0" width="100%" height="100%" fill="url(#islamic-pattern)" />
