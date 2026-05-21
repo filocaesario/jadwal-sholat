@@ -15,12 +15,13 @@ const daftarKota = [
   { nama: 'London, Inggris', lat: 51.5074, lng: -0.1278 },
 ];
 
+// Data Kalender Hari Besar Islam 2026 (1447-1448 H) Sesuai SKB & Realita
 const daftarHariBesar = [
-  { event: "Isra' Mi'raj 1447 H", date: "16 Januari 2026", y: 2026, m: 0, d: 16, desc: "Perjalanan suci Nabi Muhammad SAW" },
-  { event: "Awal Ramadhan 1447 H", date: "18 Februari 2026", y: 2026, m: 1, d: 18, desc: "Hari pertama ibadah puasa Ramadhan" },
-  { event: "Nuzulul Qur'an", date: "6 Maret 2026", y: 2026, m: 2, d: 6, desc: "Malam diturunkannya Al-Qur'an (17 Ramadhan)" },
-  { event: "Idul Fitri 1447 H", date: "20 Maret 2026", y: 2026, m: 2, d: 20, desc: "1 Syawal, Hari Raya Kemenangan" },
-  { event: "Idul Adha 1447 H", date: "26 Mei 2026", y: 2026, m: 4, d: 26, desc: "10 Dzulhijjah, Hari Raya Kurban" },
+  { event: "Isra' Mi'raj 1447 H", date: "16 Januari 2026", y: 2026, m: 0, d: 16, desc: "27 Rajab 1447 H, Perjalanan suci Nabi Muhammad SAW" },
+  { event: "Awal Ramadhan 1447 H", date: "18 Februari 2026", y: 2026, m: 1, d: 18, desc: "1 Ramadhan 1447 H, Hari pertama ibadah puasa" },
+  { event: "Nuzulul Qur'an", date: "6 Maret 2026", y: 2026, m: 2, d: 6, desc: "17 Ramadhan 1447 H, Malam diturunkannya Al-Qur'an" },
+  { event: "Idul Fitri 1447 H", date: "21 Maret 2026", y: 2026, m: 2, d: 21, desc: "1 Syawal 1447 H, Hari Raya Kemenangan" },
+  { event: "Idul Adha 1447 H", date: "27 Mei 2026", y: 2026, m: 4, d: 27, desc: "10 Dzulhijjah 1447 H, Hari Raya Kurban" },
   { event: "Tahun Baru Islam", date: "16 Juni 2026", y: 2026, m: 5, d: 16, desc: "1 Muharram 1448 H" },
   { event: "Maulid Nabi", date: "25 Agustus 2026", y: 2026, m: 7, d: 25, desc: "12 Rabiul Awal 1448 H, Kelahiran Nabi SAW" },
 ];
