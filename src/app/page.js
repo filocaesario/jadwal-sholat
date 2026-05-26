@@ -372,7 +372,7 @@ const renderEventGraphics = () => {
 
       <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
       {/* ELEMEN AUDIO TAKBIRAN BARU */}
-      <audio ref={takbiranRef} src="/takbiran.mp3" preload="auto" loop />
+      <audio ref={takbiranRef} src="https://files.catbox.moe/hthe21.mp3" preload="auto" loop/>
       
       {/* BACKGROUND */}
       <svg className={`fixed inset-0 w-full h-full pointer-events-none z-0 transition-colors duration-1000 ${modeIqomah ? 'text-amber-500' : 'text-emerald-500'} opacity-[0.02]`} xmlns="http://www.w3.org/2000/svg">
