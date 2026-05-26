@@ -293,7 +293,7 @@ export default function Home() {
   useEffect(() => { if (isMenghadapKiblat && navigator.vibrate) navigator.vibrate([50, 50, 50]); }, [isMenghadapKiblat]);
 
   // LOGIKA RENDER GRAFIS EVENT POP-UP (Emoji di H-Minus, Gambar Custom saat Hari H)
-  const renderEventGraphics = () => {
+const renderEventGraphics = () => {
     if (!eventTerdekat) return null;
     
     const today = new Date();
@@ -304,17 +304,20 @@ export default function Home() {
     // 1. JIKA EVENT IDUL ADHA DAN HARI INI ADALAH HARI H: TAMPILKAN DESAIN GAMBAR KUSTOM
     if (eventTerdekat.event.includes('Adha') && today.getTime() === eventDate.getTime()) {
       return (
-        <div className="h-56 md:h-64 relative flex flex-col items-center justify-end overflow-hidden pb-0 bg-[#0b1120] w-full rounded-t-[2rem]">
+        // PERBAIKAN: Menghapus batas tinggi kaku (h-56) agar ruang gambar lebih fleksibel
+        <div className="relative w-full flex flex-col items-center bg-[#0b1120] overflow-hidden rounded-t-[2rem]">
           <img 
             src="/desain-idul-adha.png"
             alt="Spesial Idul Adha" 
-            className="absolute inset-0 w-full h-full object-cover z-0 transition-transform duration-1000 hover:scale-105"
+            // PERBAIKAN: Menggunakan object-contain & h-auto agar desain potrait/vertikal tidak terpotong sama sekali
+            className="w-full h-auto max-h-[65vh] object-contain z-0 transition-transform duration-1000 hover:scale-105"
             onError={(e) => {
               e.target.style.display = 'none'; 
               console.log("Gambar desain-idul-adha.png tidak ditemukan.");
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0b1120]/60 via-transparent to-[#0b1120] z-10 pointer-events-none"></div>
+          {/* PERBAIKAN: Gradasi dipusatkan di bagian bawah agar teks/tombol modal menyatu lebih halus */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0b1120] via-transparent to-transparent z-10 pointer-events-none"></div>
         </div>
       );
     } 
