@@ -15,7 +15,7 @@ const daftarKota = [
   { nama: 'London, Inggris', lat: 51.5074, lng: -0.1278 },
 ];
 
-// Data Kalender Hari Besar Islam 2026 (1447-1448 H) Sesuai SKB & Realita
+// Data Kalender 2026 Sesuai Fakta & SKB Nasional
 const daftarHariBesar = [
   { event: "Isra' Mi'raj 1447 H", date: "16 Januari 2026", y: 2026, m: 0, d: 16, desc: "27 Rajab 1447 H, Perjalanan suci Nabi Muhammad SAW" },
   { event: "Awal Ramadhan 1447 H", date: "18 Februari 2026", y: 2026, m: 1, d: 18, desc: "1 Ramadhan 1447 H, Hari pertama ibadah puasa" },
@@ -26,7 +26,6 @@ const daftarHariBesar = [
   { event: "Maulid Nabi", date: "25 Agustus 2026", y: 2026, m: 7, d: 25, desc: "12 Rabiul Awal 1448 H, Kelahiran Nabi SAW" },
 ];
 
-// DAFTAR NAMA BULAN HIJRIYAH MANUAL (Agar HP tidak salah terjemah menjadi Desember)
 const BULAN_HIJRIYAH = [
   "Muharram", "Shafar", "Rabi'ul Awal", "Rabi'ul Akhir",
   "Jumadil Awal", "Jumadil Akhir", "Rajab", "Sya'ban",
@@ -80,6 +79,7 @@ export default function Home() {
   const [heading, setHeading] = useState(null);
   
   const audioRef = useRef(null);
+  const takbiranRef = useRef(null); // Ref Khusus untuk Audio Takbiran
   const listRef = useRef(null);
   const headerRef = useRef(null);
 
@@ -96,12 +96,38 @@ export default function Home() {
     }
   }, []);
 
+  // LOGIKA SMART AUDIO TAKBIRAN (Berbasis Waktu 00:00 - 08:00)
+  useEffect(() => {
+    if (!eventTerdekat || !takbiranRef.current) return;
+
+    const isHariRaya = eventTerdekat.event.includes('Idul'); // Pastikan ini event Idul Adha/Fitri
+    const isHariH = eventTerdekat.sisaHari === 0; // Pastikan ini tepat Hari H
+    const jamSekarang = waktuSekarang.getHours();
+    
+    // Rentang waktu: Lebih dari sama dengan jam 00 (tengah malam) dan kurang dari jam 8 pagi
+    const isWaktuTakbiran = jamSekarang >= 0 && jamSekarang < 8;
+
+    if (isHariRaya && isHariH && isWaktuTakbiran && suaraAktif) {
+      // Mainkan takbiran, tangkap error jika browser menolak autoplay
+      const playPromise = takbiranRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.log("Autoplay Takbiran ditolak browser, menunggu interaksi pengguna.", error);
+        });
+      }
+    } else {
+      // Jeda takbiran jika waktu habis atau tombol Suara dimatikan
+      takbiranRef.current.pause();
+    }
+  }, [waktuSekarang.getHours(), eventTerdekat?.sisaHari, suaraAktif, eventTerdekat?.event]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       const now = new Date();
       setWaktuSekarang(now);
       semuaJadwal.forEach(sholat => {
         const diffMs = sholat.waktu.getTime() - now.getTime();
+        // Adzan otomatis menyala jika batas waktu terlewati & suara aktif
         if (diffMs <= 0 && diffMs > -1000 && sholat.nama !== 'Imsak') {
           if (suaraAktif && audioRef.current) audioRef.current.play().catch(e => console.log(e));
         }
@@ -197,29 +223,18 @@ export default function Home() {
     catch (e) { return format(waktuSekarang, 'dd MMMM yyyy'); }
   };
 
-  // FUNGSI HIJRIYAH YANG SUDAH DIPERBAIKI DENGAN ARRAY MANUAL
   const getTanggalHijriyah = () => {
     try {
-      // Menggunakan en-US agar HP tidak iseng menerjemahkannya menjadi Desember
-      const formatter = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', { 
-        day: 'numeric', 
-        month: 'numeric', 
-        year: 'numeric' 
-      });
-      
+      const formatter = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', { day: 'numeric', month: 'numeric', year: 'numeric' });
       const parts = formatter.formatToParts(waktuSekarang);
       let day, month, year;
-      
       parts.forEach(p => {
         if (p.type === 'day') day = p.value;
         if (p.type === 'month') month = p.value;
         if (p.type === 'year') year = p.value;
       });
-
-      // Konversi angka bulan menjadi nama bulan yang sebenarnya
       const namaBulan = BULAN_HIJRIYAH[parseInt(month) - 1] || month;
       return `${day} ${namaBulan} ${year} H`;
-      
     } catch (e) {
       return '';
     }
@@ -277,10 +292,42 @@ export default function Home() {
 
   useEffect(() => { if (isMenghadapKiblat && navigator.vibrate) navigator.vibrate([50, 50, 50]); }, [isMenghadapKiblat]);
 
-  const renderIkonEvent = () => {
+  // LOGIKA RENDER GRAFIS EVENT POP-UP (Emoji di H-Minus, Gambar Custom saat Hari H)
+  const renderEventGraphics = () => {
     if (!eventTerdekat) return null;
-    if (eventTerdekat.event.includes('Adha')) {
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(eventTerdekat.y, eventTerdekat.m, eventTerdekat.d);
+    eventDate.setHours(0, 0, 0, 0);
+
+    // 1. JIKA EVENT IDUL ADHA DAN HARI INI ADALAH HARI H: TAMPILKAN DESAIN GAMBAR KUSTOM
+    if (eventTerdekat.event.includes('Adha') && today.getTime() === eventDate.getTime()) {
       return (
+        <div className="h-56 md:h-64 relative flex flex-col items-center justify-end overflow-hidden pb-0 bg-[#0b1120] w-full rounded-t-[2rem]">
+          <img 
+            src="/desain-idul-adha.png"
+            alt="Spesial Idul Adha" 
+            className="absolute inset-0 w-full h-full object-cover z-0 transition-transform duration-1000 hover:scale-105"
+            onError={(e) => {
+              e.target.style.display = 'none'; 
+              console.log("Gambar desain-idul-adha.png tidak ditemukan.");
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0b1120]/60 via-transparent to-[#0b1120] z-10 pointer-events-none"></div>
+        </div>
+      );
+    } 
+    
+    // 2. JIKA EVENT LAIN, ATAU IDUL ADHA TAPI MASIH H-MINUS: TAMPILKAN EMOJI CERIA
+    let emojis = (
+      <div className="relative z-10 flex items-end drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]">
+        <span className="text-[5rem] z-10 scale-110 hover:scale-125 transition-transform">🕌</span>
+      </div>
+    );
+
+    if (eventTerdekat.event.includes('Adha')) {
+      emojis = (
         <div className="relative z-10 flex items-end gap-3 md:gap-4 drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]">
           <span className="text-5xl transform -rotate-12 translate-y-3 hover:scale-110 transition-transform">🐄</span>
           <span className="text-7xl z-10 scale-110 hover:scale-125 transition-transform">🕌</span>
@@ -288,20 +335,24 @@ export default function Home() {
         </div>
       );
     } else if (eventTerdekat.event.includes('Fitri') || eventTerdekat.event.includes('Ramadhan')) {
-      return (
+      emojis = (
         <div className="relative z-10 flex items-end gap-3 md:gap-4 drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]">
           <span className="text-5xl transform -rotate-12 translate-y-3 hover:scale-110 transition-transform">🌙</span>
           <span className="text-7xl z-10 scale-110 hover:scale-125 transition-transform">🕌</span>
           <span className="text-5xl transform rotate-12 translate-y-3 hover:scale-110 transition-transform">✨</span>
         </div>
       );
-    } else {
-      return (
-        <div className="relative z-10 flex items-end drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]">
-          <span className="text-[5rem] z-10 scale-110 hover:scale-125 transition-transform">🕌</span>
-        </div>
-      );
     }
+
+    return (
+      <div className={`h-48 w-full rounded-t-[2rem] relative flex flex-col items-center justify-center overflow-hidden ${eventTerdekat.sisaHari === 0 ? 'bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-900' : 'bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900'}`}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.2)_0%,transparent_70%)] opacity-80"></div>
+        {emojis}
+        <Star className="absolute top-6 left-8 w-6 h-6 text-yellow-300 animate-pulse fill-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.8)]" />
+        <Star className="absolute bottom-8 right-8 w-4 h-4 text-yellow-300 animate-pulse fill-yellow-300 delay-200 drop-shadow-[0_0_10px_rgba(253,224,71,0.8)]" />
+        {eventTerdekat.sisaHari === 0 && <Sparkles className="absolute top-1/2 left-1/4 w-5 h-5 text-white animate-pulse" />}
+      </div>
+    );
   };
 
   return (
@@ -311,12 +362,16 @@ export default function Home() {
         @keyframes swing { 0% { transform: rotate(-3deg); } 100% { transform: rotate(3deg); } }
         .animate-swing { animation: swing 3s ease-in-out infinite alternate; transform-origin: top center; }
         @keyframes popupEnter { 0% { opacity: 0; transform: scale(0.8) translateY(30px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
-        .animate-popup { animation: popupEnter 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-popup { animation: popupEnter 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         .glass-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.3); }
+        .glass-popup { background: rgba(2, 44, 34, 0.85); backdrop-filter: blur(24px); border: 1px solid rgba(16, 185, 129, 0.3); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9), inset 0 2px 15px rgba(16, 185, 129, 0.2); }
       `}</style>
 
       <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
+      {/* ELEMEN AUDIO TAKBIRAN BARU */}
+      <audio ref={takbiranRef} src="/takbiran.mp3" preload="auto" loop />
       
+      {/* BACKGROUND */}
       <svg className={`fixed inset-0 w-full h-full pointer-events-none z-0 transition-colors duration-1000 ${modeIqomah ? 'text-amber-500' : 'text-emerald-500'} opacity-[0.02]`} xmlns="http://www.w3.org/2000/svg">
         <defs><pattern id="islamic-pattern" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse"><g stroke="currentColor" strokeWidth="1.5" fill="none"><path d="M40 0L45 35L80 40L45 45L40 80L35 45L0 40L35 35Z" /><rect x="20" y="20" width="40" height="40" transform="rotate(45 40 40)" /></g></pattern></defs>
         <rect x="0" y="0" width="100%" height="100%" fill="url(#islamic-pattern)" />
@@ -337,18 +392,16 @@ export default function Home() {
          <div className={`absolute top-20 w-32 h-32 rounded-full blur-[40px] opacity-40 transition-colors duration-1000 ${modeIqomah ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
       </div>
 
-      {/* KONTEN APLIKASI UTAMA */}
+      {/* KONTEN UTAMA */}
       <div className="max-w-md w-full relative z-20 flex flex-col pt-16 md:pt-20 pb-12 px-5 md:px-0">
         
         <div className="flex flex-wrap justify-center gap-3 mb-10 mt-6 md:mt-10">
           <button onClick={() => setShowDoa(true)} className="flex items-center gap-2 text-[11px] md:text-xs font-semibold bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-lg text-white px-5 py-2.5 rounded-full transition-all border border-white/5 shadow-md">
             <BookOpen className="w-4 h-4 text-emerald-400" /> Doa Adzan
           </button>
-          
           <button onClick={() => setShowKalender(true)} className="flex items-center gap-2 text-[11px] md:text-xs font-semibold bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-lg text-white px-5 py-2.5 rounded-full transition-all border border-white/5 shadow-md">
             <CalendarDays className="w-4 h-4 text-emerald-400" /> Hari Besar
           </button>
-
           <button onClick={() => setSuaraAktif(!suaraAktif)} className={`flex items-center gap-2 text-[11px] md:text-xs font-semibold px-5 py-2.5 rounded-full transition-all backdrop-blur-lg border shadow-md ${suaraAktif ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-white/[0.03] text-slate-300 border-white/5 hover:bg-white/[0.08]'}`}>
             {suaraAktif ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             {suaraAktif ? 'Suara ON' : 'Mute'}
@@ -378,7 +431,6 @@ export default function Home() {
                  <span suppressHydrationWarning className="font-mono font-black text-6xl text-white tracking-tighter my-3 drop-shadow-lg">
                    {isMounted ? getCountdown() : '--:--:--'}
                  </span>
-                 
                  <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5 shadow-inner mt-4">
                     <div className={`h-full rounded-full transition-all duration-1000 ease-linear bg-gradient-to-r relative ${modeIqomah ? 'from-amber-600 to-amber-400' : 'from-emerald-600 to-emerald-400'}`} style={{ width: `${progressPersen}%` }}>
                       <div className="absolute top-0 right-0 w-8 h-full bg-white/50 blur-[2px] rounded-full animate-pulse"></div>
@@ -389,13 +441,13 @@ export default function Home() {
           </div>
         </header>
 
-        {/* BANNER KECIL (DINAMIS HARI H) */}
+        {/* BANNER KECIL DI HALAMAN DEPAN */}
         {isMounted && eventTerdekat && (
           <div className={`mb-8 w-full glass-card p-4 rounded-2xl flex items-center justify-between relative overflow-hidden group transition-colors cursor-pointer ${eventTerdekat.sisaHari === 0 ? 'bg-gradient-to-r from-emerald-900/60 to-teal-900/40 border-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-emerald-950/40 to-transparent border-emerald-500/20 hover:border-emerald-500/40'}`} onClick={() => setShowPopupEvent(true)}>
              <div className={`absolute top-0 right-0 w-32 h-full blur-[30px] ${eventTerdekat.sisaHari === 0 ? 'bg-emerald-400/20' : 'bg-emerald-500/10'}`}></div>
              <div className="flex items-center gap-3 relative z-10">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center border shadow-sm ${eventTerdekat.sisaHari === 0 ? 'bg-emerald-400/30 border-emerald-400/50' : 'bg-emerald-500/20 border-emerald-500/20'}`}>
-                  {eventTerdekat.sisaHari === 0 ? <Sparkles className="w-5 h-5 text-emerald-300 animate-pulse" /> : <Star className="w-5 h-5 text-emerald-400 fill-emerald-500/30" />}
+                  {eventTerdekat.sisaHari === 0 ? <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" /> : <Star className="w-5 h-5 text-yellow-400 fill-yellow-500/30" />}
                 </div>
                 <div>
                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${eventTerdekat.sisaHari === 0 ? 'text-emerald-300' : 'text-emerald-200/70'}`}>
@@ -406,14 +458,14 @@ export default function Home() {
              </div>
              <div className="text-right relative z-10">
                 {eventTerdekat.sisaHari === 0 ? (
-                  <span className="text-emerald-950 font-bold text-[10px] md:text-xs uppercase tracking-wider bg-gradient-to-r from-emerald-400 to-teal-400 px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(52,211,153,0.5)]">Tiba!</span>
+                  <span className="text-emerald-950 font-bold text-[10px] md:text-xs uppercase tracking-wider bg-gradient-to-r from-yellow-300 to-yellow-500 px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(253,224,71,0.5)]">Tiba!</span>
                 ) : (
                   <div className="flex flex-col items-end justify-center">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-black text-emerald-400 leading-none drop-shadow-md">{eventTerdekat.sisaHari}</span>
-                      <span className="text-xs text-emerald-300/80 font-bold uppercase">Hari</span>
+                      <span className="text-2xl font-black text-yellow-400 leading-none drop-shadow-md">{eventTerdekat.sisaHari}</span>
+                      <span className="text-xs text-yellow-300/80 font-bold uppercase">Hari</span>
                     </div>
-                    <span className="text-[9px] text-emerald-400/60 uppercase tracking-widest font-bold mt-0.5">Lagi</span>
+                    <span className="text-[9px] text-yellow-400/60 uppercase tracking-widest font-bold mt-0.5">Lagi</span>
                   </div>
                 )}
              </div>
@@ -498,136 +550,91 @@ export default function Home() {
         )}
       </div>
 
-      {/* =========================================================================
-          MODAL 1: POP-UP E-COMMERCE CERDAS (HARI H & H-MINUS)
-          ========================================================================= */}
+      {/* MODAL POP-UP E-COMMERCE */}
       {showPopupEvent && eventTerdekat && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-md transition-opacity">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-md transition-opacity">
           
-          <div className={`glass-card rounded-[2rem] max-w-sm w-full shadow-[0_30px_80px_rgba(0,0,0,0.9)] relative flex flex-col p-0 animate-popup overflow-hidden border ${eventTerdekat.sisaHari === 0 ? 'border-emerald-400/60' : 'border-emerald-500/30'}`}>
+          <div className="glass-popup rounded-[2rem] max-w-sm w-full relative flex flex-col p-0 animate-popup overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.9)] border border-emerald-500/30">
             
-            {/* Banner Header dengan Perubahan Warna berdasarkan Hari H */}
-            <div className={`h-48 relative flex flex-col items-center justify-center overflow-hidden ${eventTerdekat.sisaHari === 0 ? 'bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-900' : 'bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900'}`}>
-              
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.2)_0%,transparent_70%)] opacity-80"></div>
-              
-              <button onClick={() => setShowPopupEvent(false)} className="absolute top-3 right-3 text-white hover:text-white bg-black/20 hover:bg-black/40 p-2 rounded-full transition-all z-20 backdrop-blur-md border border-white/10">
-                <X className="w-4 h-4" />
-              </button>
+            <button onClick={() => setShowPopupEvent(false)} className="absolute top-4 right-4 text-white/80 hover:text-white bg-black/50 hover:bg-black/80 p-2.5 rounded-full transition-all z-30 backdrop-blur-md border border-white/10 shadow-lg">
+              <X className="w-4 h-4" />
+            </button>
 
-              {/* Tampilkan Ikon Cerdas Tergantung Nama Event */}
-              {renderIkonEvent()}
-              
-              {/* Animasi Bintang Ornamen */}
-              <Star className="absolute top-6 left-8 w-6 h-6 text-yellow-300 animate-pulse fill-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.8)]" />
-              <Star className="absolute bottom-8 right-8 w-4 h-4 text-yellow-300 animate-pulse fill-yellow-300 delay-150 drop-shadow-[0_0_10px_rgba(253,224,71,0.8)]" />
-              {eventTerdekat.sisaHari === 0 && <Sparkles className="absolute top-1/2 left-1/4 w-5 h-5 text-white animate-pulse" />}
-            </div>
+            {/* AREA GAMBAR/VEKTOR: Dikelola oleh fungsi renderEventGraphics() */}
+            {renderEventGraphics()}
 
-            {/* Content Area dengan Kondisi Hari H */}
-            <div className="p-6 md:p-8 text-center bg-[#0b1120] relative">
+            <div className="p-6 md:p-8 pt-6 text-center relative z-20 flex flex-col items-center bg-[#0b1120] rounded-b-[2rem]">
               
               {eventTerdekat.sisaHari === 0 ? (
-                // DESAIN SAAT HARI H TIBA
                 <>
-                  <div className="absolute top-[-14px] left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-400 to-teal-500 text-white text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(16,185,129,0.5)] border border-emerald-300 flex items-center gap-1.5">
+                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-8">
                     <Sparkles className="w-3.5 h-3.5" /> ALHAMDULILLAH
                   </div>
-                  <h3 className="text-xl md:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-teal-400 mt-4 mb-2 tracking-tight">
+                  <h3 className="text-2xl md:text-3xl font-bold font-serif italic text-transparent bg-clip-text bg-gradient-to-br from-yellow-200 via-yellow-400 to-yellow-600 mb-2 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                     Selamat {eventTerdekat.event}!
                   </h3>
-                  <p className="text-slate-300 text-sm leading-relaxed mb-6">
-                    Hari besar yang ditunggu-tunggu telah tiba. Semoga Allah SWT menerima amal ibadah kita semua dan memberikan keberkahan yang berlimpah.
+                  <p className="text-emerald-100/90 text-sm leading-relaxed mb-6 font-light">
+                    Hari kemenangan dan keberkahan telah tiba. Semoga Allah SWT senantiasa menerima amal ibadah kita semua.
                   </p>
                 </>
               ) : (
-                // DESAIN SAAT MENJELANG (H-MINUS)
                 <>
-                  <div className="absolute top-[-14px] left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(245,158,11,0.4)] border border-yellow-300 flex items-center gap-1.5">
-                    <Heart className="w-3.5 h-3.5 fill-amber-950" /> Sambut Kemenangan
+                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-8">
+                    <Heart className="w-3.5 h-3.5 fill-yellow-950" /> Sambut Berkah
                   </div>
-                  <h3 className="text-xl md:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 mt-4 mb-2 tracking-tight">
+                  <h3 className="text-2xl md:text-3xl font-bold font-serif italic text-transparent bg-clip-text bg-gradient-to-br from-yellow-200 via-yellow-400 to-yellow-600 mb-1 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                     Menjelang {eventTerdekat.event}
                   </h3>
-                  <p className="text-slate-300 text-sm leading-relaxed mb-6">
-                    Momen spesial tinggal <span className="font-bold text-amber-400 text-base">{eventTerdekat.sisaHari} Hari Lagi!</span> Mari manfaatkan sisa waktu ini untuk memaksimalkan ibadah dan persiapan terbaik kita.
-                  </p>
+                  <div className="text-emerald-100/90 text-sm leading-relaxed mb-6 font-light mt-2">
+                    Momen suci tinggal <span className="font-extrabold text-yellow-400 text-base">{eventTerdekat.sisaHari} Hari Lagi</span>. Mari persiapkan keikhlasan dan ibadah terbaik kita.
+                  </div>
                 </>
               )}
               
-              <button onClick={() => setShowPopupEvent(false)} className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0_5px_20px_rgba(16,185,129,0.3)] active:scale-[0.98] border border-emerald-400/30 uppercase tracking-widest text-[11px] md:text-xs">
-                Kembali ke Jadwal
+              <button onClick={() => setShowPopupEvent(false)} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-3.5 rounded-xl transition-all shadow-[0_5px_20px_rgba(16,185,129,0.4)] active:scale-[0.98] border border-emerald-300/40 uppercase tracking-widest text-[11px] md:text-xs">
+                Lanjutkan ke Jadwal
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL KOMPAS VISUAL */}
+      {/* MODAL KOMPAS */}
       {showKompas && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-xl transition-opacity">
           <div className="glass-card rounded-3xl max-w-sm w-full shadow-[0_20px_60px_rgba(0,0,0,0.8)] relative flex flex-col items-center p-8 overflow-hidden">
             <div className={`absolute inset-0 opacity-20 transition-colors duration-500 ${isMenghadapKiblat ? 'bg-emerald-500' : 'bg-transparent'}`}></div>
-
-            <button onClick={tutupKompas} className="absolute top-5 right-5 text-slate-400 hover:text-white bg-white/5 hover:bg-red-500/40 p-2 rounded-full transition-all z-20">
-              <X className="w-5 h-5" />
-            </button>
-            
+            <button onClick={tutupKompas} className="absolute top-5 right-5 text-slate-400 hover:text-white bg-white/5 hover:bg-red-500/40 p-2 rounded-full transition-all z-20"><X className="w-5 h-5" /></button>
             <h3 className="text-2xl font-bold text-white mb-2 tracking-wide z-10">Arah Kiblat</h3>
-            
-            {heading === null ? (
-              <p className="text-slate-400 text-sm text-center mb-8 z-10 animate-pulse">Menghubungkan ke sensor...</p>
-            ) : (
-              <p className="text-slate-400 text-sm text-center mb-8 z-10">Putar HP hingga Ikon Ka'bah sejajar dengan panah Hijau.</p>
-            )}
-            
+            {heading === null ? ( <p className="text-slate-400 text-sm text-center mb-8 z-10 animate-pulse">Menghubungkan ke sensor...</p> ) : ( <p className="text-slate-400 text-sm text-center mb-8 z-10">Putar HP hingga Ikon Ka'bah sejajar dengan panah Hijau.</p> )}
             {heading !== null && (
               <div className={`px-5 py-2.5 rounded-xl mb-6 font-bold text-sm tracking-widest text-center transition-all duration-300 z-10 ${isMenghadapKiblat ? 'bg-emerald-500 text-black shadow-[0_0_30px_rgba(16,185,129,0.8)] scale-110' : 'bg-black/60 text-slate-400 border border-white/10'}`}>
                 {isMenghadapKiblat ? 'LURUS MENGHADAP KIBLAT' : 'PUTAR HP ANDA'}
               </div>
             )}
-
             <div className="relative w-64 h-64 z-10 mb-8 mt-2">
-               <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-30 drop-shadow-[0_2px_5px_rgba(0,0,0,1)]">
-                 <div className={`w-0 h-0 border-l-[12px] border-r-[12px] border-t-[18px] border-l-transparent border-r-transparent transition-colors duration-300 ${isMenghadapKiblat ? 'border-t-emerald-400' : 'border-t-slate-300'}`}></div>
-               </div>
-
+               <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-30 drop-shadow-[0_2px_5px_rgba(0,0,0,1)]"><div className={`w-0 h-0 border-l-[12px] border-r-[12px] border-t-[18px] border-l-transparent border-r-transparent transition-colors duration-300 ${isMenghadapKiblat ? 'border-t-emerald-400' : 'border-t-slate-300'}`}></div></div>
                <div className={`w-full h-full rounded-full border-4 flex items-center justify-center bg-black/80 shadow-[inset_0_0_40px_rgba(0,0,0,0.9)] transition-colors duration-500 overflow-hidden relative ${isMenghadapKiblat ? 'border-emerald-500' : 'border-slate-800'}`}>
                  {heading !== null && (
                    <div className="absolute inset-0 transition-transform duration-200 ease-out" style={{ transform: `rotate(${-heading}deg)` }}>
-                      {[...Array(12)].map((_, i) => (
-                        <div key={i} className="absolute inset-0" style={{ transform: `rotate(${i * 30}deg)` }}>
-                          <div className={`w-1 mx-auto mt-2 rounded-full ${i % 3 === 0 ? 'h-3 bg-slate-300' : 'h-1.5 bg-slate-600'}`}></div>
-                        </div>
-                      ))}
-
+                      {[...Array(12)].map((_, i) => ( <div key={i} className="absolute inset-0" style={{ transform: `rotate(${i * 30}deg)` }}><div className={`w-1 mx-auto mt-2 rounded-full ${i % 3 === 0 ? 'h-3 bg-slate-300' : 'h-1.5 bg-slate-600'}`}></div></div> ))}
                       <div className="absolute top-6 left-1/2 -translate-x-1/2 text-red-500 font-bold text-sm">U</div>
                       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-slate-500 font-bold text-sm">S</div>
                       <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">B</div>
                       <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">T</div>
-                      
                       <div className="absolute inset-0" style={{ transform: `rotate(${arahKiblat}deg)` }}>
                         <div className="w-0.5 h-[50%] bg-gradient-to-t from-transparent to-emerald-500/50 mx-auto opacity-70"></div>
-                        <div className={`absolute top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-md bg-black border-2 border-yellow-600 flex items-center justify-center shadow-lg transition-transform duration-300 ${isMenghadapKiblat ? 'scale-125 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.6)]' : ''}`}>
-                           <div className="w-full h-px bg-yellow-600 absolute top-2"></div>
-                        </div>
+                        <div className={`absolute top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-md bg-black border-2 border-yellow-600 flex items-center justify-center shadow-lg transition-transform duration-300 ${isMenghadapKiblat ? 'scale-125 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.6)]' : ''}`}><div className="w-full h-px bg-yellow-600 absolute top-2"></div></div>
                       </div>
                    </div>
                  )}
                  <div className="absolute w-3 h-3 bg-white rounded-full z-20 shadow-[0_0_10px_rgba(255,255,255,0.8)]"></div>
                </div>
             </div>
-
             <div className="w-full flex justify-between items-center bg-black/60 px-5 py-3.5 rounded-2xl border border-white/10 z-10">
-               <div className="flex flex-col">
-                 <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Derajat Kiblat</span>
-                 <span className="font-mono text-emerald-400 font-bold text-base">{arahKiblat.toFixed(1)}°</span>
-               </div>
+               <div className="flex flex-col"><span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Derajat Kiblat</span><span className="font-mono text-emerald-400 font-bold text-base">{arahKiblat.toFixed(1)}°</span></div>
                <div className="w-px h-8 bg-white/20"></div>
-               <div className="flex flex-col items-end">
-                 <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Arah HP Anda</span>
-                 <span className="font-mono text-white font-bold text-base">{heading !== null ? `${heading.toFixed(1)}°` : '--°'}</span>
-               </div>
+               <div className="flex flex-col items-end"><span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Arah HP Anda</span><span className="font-mono text-white font-bold text-base">{heading !== null ? `${heading.toFixed(1)}°` : '--°'}</span></div>
             </div>
           </div>
         </div>
