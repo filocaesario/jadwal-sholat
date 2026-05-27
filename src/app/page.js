@@ -307,7 +307,7 @@ const renderEventGraphics = () => {
         // PERBAIKAN: Menghapus batas tinggi kaku (h-56) agar ruang gambar lebih fleksibel
         <div className="relative w-full flex flex-col items-center bg-[#0b1120] overflow-hidden rounded-t-[2rem]">
           <img 
-            src="/desain-idul-adha.png"
+            src="/iduladha.png"
             alt="Spesial Idul Adha" 
             // PERBAIKAN: Menggunakan object-contain & h-auto agar desain potrait/vertikal tidak terpotong sama sekali
             className="w-full h-auto max-h-[65vh] object-contain z-0 transition-transform duration-1000 hover:scale-105"
