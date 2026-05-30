@@ -37,6 +37,7 @@ const getIkonSholat = (nama, warnaClass) => {
   switch (nama) {
     case 'Imsak': return <MoonStar className={className} />;
     case 'Subuh': return <Sunrise className={className} />;
+    case 'Terbit': return <SunDim className={className} />; // Menambahkan ikon khusus Terbit
     case 'Dzuhur': return <Sun className={className} />;
     case 'Ashar': return <SunDim className={className} />;
     case 'Maghrib': return <Sunset className={className} />;
@@ -79,7 +80,7 @@ export default function Home() {
   const [heading, setHeading] = useState(null);
   
   const audioRef = useRef(null);
-  const takbiranRef = useRef(null); // Ref Khusus untuk Audio Takbiran
+  const takbiranRef = useRef(null); 
   const listRef = useRef(null);
   const headerRef = useRef(null);
 
@@ -96,19 +97,17 @@ export default function Home() {
     }
   }, []);
 
-  // LOGIKA SMART AUDIO TAKBIRAN (Berbasis Waktu 00:00 - 08:00)
+  // LOGIKA SMART AUDIO TAKBIRAN (00:00 - 08:00)
   useEffect(() => {
     if (!eventTerdekat || !takbiranRef.current) return;
 
-    const isHariRaya = eventTerdekat.event.includes('Idul'); // Pastikan ini event Idul Adha/Fitri
-    const isHariH = eventTerdekat.sisaHari === 0; // Pastikan ini tepat Hari H
+    const isHariRaya = eventTerdekat.event.includes('Idul');
+    const isHariH = eventTerdekat.sisaHari === 0; 
     const jamSekarang = waktuSekarang.getHours();
     
-    // Rentang waktu: Lebih dari sama dengan jam 00 (tengah malam) dan kurang dari jam 8 pagi
     const isWaktuTakbiran = jamSekarang >= 0 && jamSekarang < 8;
 
     if (isHariRaya && isHariH && isWaktuTakbiran && suaraAktif) {
-      // Mainkan takbiran, tangkap error jika browser menolak autoplay
       const playPromise = takbiranRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
@@ -116,7 +115,6 @@ export default function Home() {
         });
       }
     } else {
-      // Jeda takbiran jika waktu habis atau tombol Suara dimatikan
       takbiranRef.current.pause();
     }
   }, [waktuSekarang.getHours(), eventTerdekat?.sisaHari, suaraAktif, eventTerdekat?.event]);
@@ -127,8 +125,8 @@ export default function Home() {
       setWaktuSekarang(now);
       semuaJadwal.forEach(sholat => {
         const diffMs = sholat.waktu.getTime() - now.getTime();
-        // Adzan otomatis menyala jika batas waktu terlewati & suara aktif
-        if (diffMs <= 0 && diffMs > -1000 && sholat.nama !== 'Imsak') {
+        // Memblokir suara adzan agar TIDAK BERBUNYI di waktu Imsak maupun Terbit
+        if (diffMs <= 0 && diffMs > -1000 && sholat.nama !== 'Imsak' && sholat.nama !== 'Terbit') {
           if (suaraAktif && audioRef.current) audioRef.current.play().catch(e => console.log(e));
         }
       });
@@ -151,6 +149,7 @@ export default function Home() {
       return [
         { nama: 'Imsak', waktu: new Date(pt.fajr.getTime() - 10 * 60000), iqomah: 0 },
         { nama: 'Subuh', waktu: pt.fajr, iqomah: 10 },
+        { nama: 'Terbit', waktu: pt.sunrise, iqomah: 0 }, // WAKTU TERBIT DITAMBAHKAN (Tanpa Iqomah)
         { nama: 'Dzuhur', waktu: pt.dhuhr, iqomah: 10 },
         { nama: 'Ashar', waktu: pt.asr, iqomah: 10 },
         { nama: 'Maghrib', waktu: pt.maghrib, iqomah: 7 },
@@ -292,8 +291,7 @@ export default function Home() {
 
   useEffect(() => { if (isMenghadapKiblat && navigator.vibrate) navigator.vibrate([50, 50, 50]); }, [isMenghadapKiblat]);
 
-  // LOGIKA RENDER GRAFIS EVENT POP-UP (Emoji di H-Minus, Gambar Custom saat Hari H)
-const renderEventGraphics = () => {
+  const renderEventGraphics = () => {
     if (!eventTerdekat) return null;
     
     const today = new Date();
@@ -301,28 +299,23 @@ const renderEventGraphics = () => {
     const eventDate = new Date(eventTerdekat.y, eventTerdekat.m, eventTerdekat.d);
     eventDate.setHours(0, 0, 0, 0);
 
-    // 1. JIKA EVENT IDUL ADHA DAN HARI INI ADALAH HARI H: TAMPILKAN DESAIN GAMBAR KUSTOM
     if (eventTerdekat.event.includes('Adha') && today.getTime() === eventDate.getTime()) {
       return (
-        // PERBAIKAN: Menghapus batas tinggi kaku (h-56) agar ruang gambar lebih fleksibel
         <div className="relative w-full flex flex-col items-center bg-[#0b1120] overflow-hidden rounded-t-[2rem]">
           <img 
             src="/iduladha.png"
             alt="Spesial Idul Adha" 
-            // PERBAIKAN: Menggunakan object-contain & h-auto agar desain potrait/vertikal tidak terpotong sama sekali
             className="w-full h-auto max-h-[65vh] object-contain z-0 transition-transform duration-1000 hover:scale-105"
             onError={(e) => {
               e.target.style.display = 'none'; 
-              console.log("Gambar desain-idul-adha.png tidak ditemukan.");
+              console.log("Gambar iduladha.png tidak ditemukan.");
             }}
           />
-          {/* PERBAIKAN: Gradasi dipusatkan di bagian bawah agar teks/tombol modal menyatu lebih halus */}
           <div className="absolute inset-0 bg-gradient-to-t from-[#0b1120] via-transparent to-transparent z-10 pointer-events-none"></div>
         </div>
       );
     } 
     
-    // 2. JIKA EVENT LAIN, ATAU IDUL ADHA TAPI MASIH H-MINUS: TAMPILKAN EMOJI CERIA
     let emojis = (
       <div className="relative z-10 flex items-end drop-shadow-[0_10px_15px_rgba(0,0,0,0.6)]">
         <span className="text-[5rem] z-10 scale-110 hover:scale-125 transition-transform">🕌</span>
@@ -371,10 +364,8 @@ const renderEventGraphics = () => {
       `}</style>
 
       <audio ref={audioRef} src="/adzan.mp3" preload="auto" />
-      {/* ELEMEN AUDIO TAKBIRAN BARU */}
-      <audio ref={takbiranRef} src="https://files.catbox.moe/hthe21.mp3" preload="auto" loop/>
+      <audio ref={takbiranRef} src="/takbiran.mp3" preload="auto" loop />
       
-      {/* BACKGROUND */}
       <svg className={`fixed inset-0 w-full h-full pointer-events-none z-0 transition-colors duration-1000 ${modeIqomah ? 'text-amber-500' : 'text-emerald-500'} opacity-[0.02]`} xmlns="http://www.w3.org/2000/svg">
         <defs><pattern id="islamic-pattern" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse"><g stroke="currentColor" strokeWidth="1.5" fill="none"><path d="M40 0L45 35L80 40L45 45L40 80L35 45L0 40L35 35Z" /><rect x="20" y="20" width="40" height="40" transform="rotate(45 40 40)" /></g></pattern></defs>
         <rect x="0" y="0" width="100%" height="100%" fill="url(#islamic-pattern)" />
@@ -395,7 +386,6 @@ const renderEventGraphics = () => {
          <div className={`absolute top-20 w-32 h-32 rounded-full blur-[40px] opacity-40 transition-colors duration-1000 ${modeIqomah ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
       </div>
 
-      {/* KONTEN UTAMA */}
       <div className="max-w-md w-full relative z-20 flex flex-col pt-16 md:pt-20 pb-12 px-5 md:px-0">
         
         <div className="flex flex-wrap justify-center gap-3 mb-10 mt-6 md:mt-10">
@@ -444,7 +434,6 @@ const renderEventGraphics = () => {
           </div>
         </header>
 
-        {/* BANNER KECIL DI HALAMAN DEPAN */}
         {isMounted && eventTerdekat && (
           <div className={`mb-8 w-full glass-card p-4 rounded-2xl flex items-center justify-between relative overflow-hidden group transition-colors cursor-pointer ${eventTerdekat.sisaHari === 0 ? 'bg-gradient-to-r from-emerald-900/60 to-teal-900/40 border-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-emerald-950/40 to-transparent border-emerald-500/20 hover:border-emerald-500/40'}`} onClick={() => setShowPopupEvent(true)}>
              <div className={`absolute top-0 right-0 w-32 h-full blur-[30px] ${eventTerdekat.sisaHari === 0 ? 'bg-emerald-400/20' : 'bg-emerald-500/10'}`}></div>
@@ -517,7 +506,7 @@ const renderEventGraphics = () => {
                 let timeColor = 'text-slate-400';
                 let badge = null;
 
-                if (isIqomahThis) {
+                if (isIqomahThis && item.nama !== 'Terbit') {
                   liClass = 'bg-amber-500/10 border border-amber-500/30 shadow-[0_8px_20px_rgba(245,158,11,0.15)] scale-[1.02] z-10 relative';
                   iconColorClass = 'text-amber-400';
                   textColor = 'text-amber-400';
@@ -534,7 +523,7 @@ const renderEventGraphics = () => {
                 return (
                   <li key={item.nama} className={`flex justify-between items-center p-4 rounded-2xl transition-all duration-300 cursor-default ${liClass}`}>
                     <div className="flex items-center gap-4 md:gap-5">
-                      <div className={`p-3 rounded-xl shadow-[inset_0_2px_5px_rgba(0,0,0,0.5)] transition-colors ${isIqomahThis ? 'bg-amber-950/80' : isNext ? 'bg-emerald-950/80' : 'bg-black/40'}`}>
+                      <div className={`p-3 rounded-xl shadow-[inset_0_2px_5px_rgba(0,0,0,0.5)] transition-colors ${isIqomahThis && item.nama !== 'Terbit' ? 'bg-amber-950/80' : isNext ? 'bg-emerald-950/80' : 'bg-black/40'}`}>
                         {getIkonSholat(item.nama, iconColorClass)}
                       </div>
                       <div className="flex flex-col items-start">
@@ -555,22 +544,19 @@ const renderEventGraphics = () => {
 
       {/* MODAL POP-UP E-COMMERCE */}
       {showPopupEvent && eventTerdekat && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-md transition-opacity">
-          
-          <div className="glass-popup rounded-[2rem] max-w-sm w-full relative flex flex-col p-0 animate-popup overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.9)] border border-emerald-500/30">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-md">
+          <div className="glass-popup rounded-[2rem] w-full max-w-[480px] max-h-[95vh] relative flex flex-col p-0 animate-popup overflow-y-auto shadow-[0_30px_80px_rgba(0,0,0,0.9)] border border-emerald-500/30 custom-scrollbar">
             
-            <button onClick={() => setShowPopupEvent(false)} className="absolute top-4 right-4 text-white/80 hover:text-white bg-black/50 hover:bg-black/80 p-2.5 rounded-full transition-all z-30 backdrop-blur-md border border-white/10 shadow-lg">
-              <X className="w-4 h-4" />
+            <button onClick={() => setShowPopupEvent(false)} className="absolute top-4 right-4 text-white/80 hover:text-white bg-black/50 p-2.5 rounded-full z-[70] backdrop-blur-md border border-white/10 shadow-lg">
+              <X className="w-5 h-5" />
             </button>
 
-            {/* AREA GAMBAR/VEKTOR: Dikelola oleh fungsi renderEventGraphics() */}
             {renderEventGraphics()}
 
-            <div className="p-6 md:p-8 pt-6 text-center relative z-20 flex flex-col items-center bg-[#0b1120] rounded-b-[2rem]">
-              
+            <div className="p-6 md:p-8 pt-4 text-center relative z-20 flex flex-col items-center bg-[#0b1120]">
               {eventTerdekat.sisaHari === 0 ? (
                 <>
-                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-8">
+                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-6">
                     <Sparkles className="w-3.5 h-3.5" /> ALHAMDULILLAH
                   </div>
                   <h3 className="text-2xl md:text-3xl font-bold font-serif italic text-transparent bg-clip-text bg-gradient-to-br from-yellow-200 via-yellow-400 to-yellow-600 mb-2 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
@@ -582,7 +568,7 @@ const renderEventGraphics = () => {
                 </>
               ) : (
                 <>
-                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-8">
+                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-950 text-[10px] md:text-xs font-black px-5 py-1.5 rounded-full uppercase tracking-widest shadow-[0_5px_15px_rgba(250,204,21,0.4)] border border-yellow-300 flex items-center gap-1.5 mb-4 z-20 -mt-6">
                     <Heart className="w-3.5 h-3.5 fill-yellow-950" /> Sambut Berkah
                   </div>
                   <h3 className="text-2xl md:text-3xl font-bold font-serif italic text-transparent bg-clip-text bg-gradient-to-br from-yellow-200 via-yellow-400 to-yellow-600 mb-1 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
